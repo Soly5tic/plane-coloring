@@ -56,6 +56,24 @@ def get_rational_angles():
         angles.append(np.arccos(-a/c))
     return list(set(angles))
 
+def k_core_prune(G: nx.Graph, k: int) -> nx.Graph:
+    """
+    不断删除度数 <= k 的节点，直到图中没有节点或所有节点度数均 > k。
+    返回最终的图（原图不会被修改）。
+    """
+    # 深拷贝，避免修改原图
+    H = G.copy()
+    changed = True
+    while changed and H.number_of_nodes() > 0:
+        changed = False
+        # 找出所有度数 <= k 的节点
+        to_remove = [n for n, deg in H.degree() if deg <= k]
+        if to_remove:
+            H.remove_nodes_from(to_remove)
+            changed = True
+    return H
+
+
 RATIONAL_ANGLES = get_rational_angles()
 
 class GeneticUDGSearch:
@@ -230,6 +248,13 @@ class GeneticUDGSearch:
             next_gen.append(child)
             
         self.population = next_gen
+        if self.generation % 15 == 0:
+            for udg in self.population:
+                udg.builder.k_core_pruning(3)
+                udg.update_fitness()
+            next_gen = [udg for udg in next_gen if udg.fitness > 0]
+            self.population = next_gen
+            
 
     def get_best_graph(self):
         self.population.sort(key=lambda x: x.fitness, reverse=True)
@@ -240,8 +265,8 @@ if __name__ == "__main__":
 
     # 1. 配置 GA
     ga = GeneticUDGSearch(
-        pop_size=100,
-        max_nodes=500,  # 限制图规模，防止变慢
+        pop_size=20,
+        max_nodes=1500,  # 限制图规模，防止变慢
         mutation_rate=0.9, # 高变异率，因为探索空间很大
         elite_size=2
     )

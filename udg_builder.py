@@ -352,3 +352,62 @@ class UDGBuilder:
         plt.axis('equal')
         plt.grid(True)
         plt.show()
+        
+    def k_core_pruning(self, k: int):
+        """
+        重复删除所有度数 <=k 的点，直到图为空或者所有点度数 >k 为止。
+        
+        Args:
+            k: 核心数阈值。
+        """
+        if len(self.nodes) == 0:
+            return
+        
+        # 获取当前图的NetworkX表示
+        G = self.get_graph()
+        
+        # 计算每个节点的度数
+        degrees = dict(G.degree())
+        
+        # 重复删除度数<=k的节点，直到没有这样的节点为止
+        while True:
+            # 找出所有度数<=k的节点
+            nodes_to_remove = [node for node, degree in degrees.items() if degree <= k]
+            
+            # 如果没有需要删除的节点，退出循环
+            if not nodes_to_remove:
+                break
+            
+            # 删除这些节点
+            for node in nodes_to_remove:
+                G.remove_node(node)
+            
+            # 如果图为空，退出循环
+            if G.number_of_nodes() == 0:
+                break
+            
+            # 更新度数
+            degrees = dict(G.degree())
+        
+        # 更新UDGBuilder的内部状态
+        if G.number_of_nodes() == 0:
+            self.nodes = np.empty((0, 2))
+            self.edges = set()
+        else:
+            # 获取剩余节点的索引和坐标
+            remaining_nodes = sorted(G.nodes())
+            new_nodes = np.array([self.nodes[node] for node in remaining_nodes])
+            
+            # 创建旧索引到新索引的映射
+            mapping = {old_idx: new_idx for new_idx, old_idx in enumerate(remaining_nodes)}
+            
+            # 更新边集
+            new_edges = set()
+            for u, v in G.edges():
+                new_edges.add((mapping[u], mapping[v]))
+            
+            # 更新内部状态
+            self.nodes = new_nodes
+            self.edges = new_edges
+        
+        print(f"K-core pruning (k={k}) completed. Remaining nodes: {len(self.nodes)}, edges: {len(self.edges)}.")
