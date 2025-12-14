@@ -1,5 +1,7 @@
 import networkx as nx
 import subprocess
+import random
+import string
 
 def graph_to_cnf_sat(G, k):
     """
@@ -123,7 +125,8 @@ def verify_coloring(G, k, assignment, var_mapping):
 
 def graph_coloring(G, k):
     clauses, var_mapping = graph_to_cnf_sat(G, k)
-    cnf_filename = f"./tmp/graph_{k}coloring.cnf"
+    random_str = ''.join(random.choices(string.ascii_letters + string.digits, k=32))
+    cnf_filename = f"./tmp/graph_coloring{random_str}.cnf"
     save_cnf_to_file(clauses, cnf_filename)
     
     try:
@@ -132,7 +135,7 @@ def graph_coloring(G, k):
             ['./kissat', '--quiet', cnf_filename], 
             capture_output=True, 
             text=True,
-            timeout=30  # 设置30秒超时
+            timeout=300  # 设置30秒超时
         )
         output = result.stdout
         lines = output.split('\n')

@@ -181,7 +181,7 @@ def load_model(model_path, device):
     :param device: 运行设备
     :return: 加载后的模型
     """
-    model = GCN(hidden_channels=64).to(device)
+    model = GCN(hidden_channels=256).to(device)
     model.load_state_dict(torch.load(model_path, map_location=device))
     model.eval()
     print(f"模型已从 {model_path} 加载")
@@ -236,10 +236,10 @@ def main():
     print(f"使用设备: {device}")
     
     # 加载和预处理数据
-    train_loader, val_loader, test_loader = load_and_preprocess_data("graph_coloring_dataset.pkl")
+    train_loader, val_loader, test_loader = load_and_preprocess_data("test_graph_dataset.pkl")
     
     # 初始化模型
-    model = GCN(hidden_channels=64).to(device)
+    model = GCN(hidden_channels=256).to(device)
     print(model)
     
     # 设置优化器和损失函数
@@ -247,7 +247,7 @@ def main():
     criterion = torch.nn.CrossEntropyLoss()
     
     # 训练模型
-    num_epochs = 100
+    num_epochs = 1000
     best_val_accuracy = 0.0
     best_model_path = "best_3color_model.pth"
     

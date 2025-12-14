@@ -101,7 +101,12 @@ def generate_random_graphs(num_graphs, min_nodes=5, max_nodes=50, edge_frac_min=
                     # 如果任务返回None（超时），重新提交一个任务
                     future = executor.submit(generate_single_graph, min_nodes, max_nodes, edge_frac, chr)
                     futures.add(future)
-    
+        # 生成完成后强制终止所有子进程
+    for p in multiprocessing.active_children():
+        p.terminate()
+        p.join(timeout=1)
+        if p.is_alive():
+            p.kill()
     return dataset
 
 def save_dataset(dataset, filename):
@@ -130,9 +135,9 @@ if __name__ == "__main__":
     def main():
         try:
             # 配置参数 - 测试用小数据集
-            num_graphs = 10  # 减少图数量以便快速测试
-            min_nodes = 10   # 减少最小节点数
-            max_nodes = 30   # 减少最大节点数
+            num_graphs = 10000  # 减少图数量以便快速测试
+            min_nodes = 50   # 减少最小节点数
+            max_nodes = 500   # 减少最大节点数
             edge_frac_min = 4.1-0.2
             edge_frac_max = 4.1+0.6
             chr = 4
