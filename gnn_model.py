@@ -90,7 +90,7 @@ def predict_graph(model, graph, device):
     :param model: 训练好的模型
     :param graph: NetworkX图
     :param device: 运行设备
-    :return: 预测结果（0或1）
+    :return: 预测概率（0到1之间的连续值，表示图可4染色的概率）
     """
     # 将图转换为Data对象
     data = graph_to_data(graph, 0)  # 标签这里不重要，只用于预测
@@ -99,9 +99,10 @@ def predict_graph(model, graph, device):
     model.eval()
     with torch.no_grad():
         out = model(data)
-        pred = out.argmax(dim=1).item()
+        prob = F.softmax(out, dim=1)
+        pred_prob = prob[0][1].item()  # 获取可4染色（索引1）的概率
     
-    return pred
+    return pred_prob
 
 
 def demo(model_path, device):
@@ -117,12 +118,13 @@ def demo(model_path, device):
     test_graph = nx.erdos_renyi_graph(15, 0.3)
     
     # 使用模型进行预测
-    pred = predict_graph(model, test_graph, device)
+    pred_prob = predict_graph(model, test_graph, device)
     
     # 输出结果
     print(f"测试图节点数: {test_graph.number_of_nodes()}")
     print(f"测试图边数: {test_graph.number_of_edges()}")
-    print(f"模型预测结果: {'可4染色' if pred == 1 else '不可4染色'}")
+    print(f"模型预测可4染色的概率: {pred_prob:.4f}")
+    print(f"预测类别: {'可4染色' if pred_prob >= 0.5 else '不可4染色'}")
     
     # 如果我们有实际标签，可以比较
     # 注意：这里为了演示，我们不计算实际标签，直接输出预测结果

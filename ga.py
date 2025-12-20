@@ -5,10 +5,12 @@ import copy
 import matplotlib.pyplot as plt
 from typing import List, Optional
 from z3 import Solver, Bool, Or, And, Not
+import torch
 
 # 假设之前的代码保存在 udg_builder.py 中
 from udg_builder import UDGBuilder 
 from graph_coloring import is_colorable
+from gnn_model import load_model, predict_graph
 
 # 为了代码独立运行，这里简略重新定义必要的 UDGBuilder 接口，
 # 实际使用时请直接引用你之前保存的文件。
@@ -16,20 +18,22 @@ class UDGBuilderWrapper:
     """
     对 UDGBuilder 的封装，增加了适合 GA 的深拷贝和特定变异逻辑。
     """
-    def __init__(self, builder):
+    def __init__(self, builder, model=None, device=None):
         self.builder = builder
         self.fitness = 0.0
         self.graph_cache = None # 缓存 NetworkX 对象
+        self.model = model
+        self.device = device
 
     def copy(self):
         """深拷贝当前个体，用于产生后代"""
         new_builder = copy.deepcopy(self.builder)
-        return UDGBuilderWrapper(new_builder)
+        return UDGBuilderWrapper(new_builder, self.model, self.device)
 
     def update_fitness(self):
         """
-        计算适应度：平均度数 (Average Degree)。
-        Avg Degree = 2 * |E| / |V|
+        计算适应度：结合GNN预测的4染色可能性和图的大小。
+        适应度越高，表示图越难4染色且大小越小。
         """
         # 只有在变异后才重新计算
         self.builder.clean_isolated_nodes() # 总是先清理孤立点
@@ -42,7 +46,21 @@ class UDGBuilderWrapper:
         if num_nodes == 0:
             self.fitness = 0.0
         else:
-            self.fitness = 2.0 * num_edges / num_nodes
+            # 使用GNN模型预测4染色可能性
+            if self.model is None or self.device is None:
+                # 如果没有模型，使用平均度数作为替代
+                self.fitness = 2.0 * num_edges / num_nodes
+            else:
+                # 模型预测的是"可4染色"的概率，所以1-pred_prob表示"难4染色"的程度
+                pred_prob = predict_graph(self.model, G, self.device)
+                difficulty_score = 1.0 - pred_prob  # 难4染色的程度
+                
+                # 大小惩罚：鼓励更小的图，使用节点数的倒数作为权重
+                size_penalty = 1.0 / num_nodes
+                
+                # 组合得分：难4染色程度越高，图越小，适应度越高
+                # 放大size_penalty以便观察变化
+                self.fitness = difficulty_score + (1000 * size_penalty)
         
         return self.fitness
 
@@ -81,13 +99,15 @@ class GeneticUDGSearch:
                  pop_size=20, 
                  max_nodes=2000, 
                  mutation_rate=0.8, 
-                 elite_size=3):
+                 elite_size=3, 
+                 model_path="/home/xiezi/plane-coloring/best_4color_model.pth"):
         """
         Args:
             pop_size: 种群大小
             max_nodes: 为了防止内存爆炸，限制最大节点数
             mutation_rate: 变异概率
             elite_size: 每代保留的最优个体数
+            model_path: GNN模型路径
         """
         self.pop_size = pop_size
         self.max_nodes = max_nodes
@@ -98,6 +118,11 @@ class GeneticUDGSearch:
         
         # 初始化数据记录
         self.best_fitness_history = []
+        
+        # GNN模型相关
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.model = load_model(model_path, self.device)
+        print(f"使用设备: {self.device}")
 
     def initialize_population(self, base_builder_cls):
         """
@@ -116,7 +141,7 @@ class GeneticUDGSearch:
             initial_rotation = random.uniform(0, 2*np.pi)
             builder.add_moser_spindle(angle=initial_rotation)
             
-            wrapper = UDGBuilderWrapper(builder)
+            wrapper = UDGBuilderWrapper(builder, self.gnn_model, self.device)
             wrapper.update_fitness()
             self.population.append(wrapper)
 
@@ -251,6 +276,8 @@ class GeneticUDGSearch:
         if self.generation % 15 == 0:
             for udg in self.population:
                 udg.builder.k_core_pruning(3)
+                if len(udg.builder.nodes) == 0:
+                    udg.builder.add_moser_spindle()
                 udg.update_fitness()
             next_gen = [udg for udg in next_gen if udg.fitness > 0]
             self.population = next_gen
