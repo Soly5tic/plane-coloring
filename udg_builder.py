@@ -353,6 +353,63 @@ class UDGBuilder:
         plt.grid(True)
         plt.show()
         
+    def remove_farthest_points(self, ratio: float):
+        """
+        移除与原点(0,0)直线距离最大的一定比例的点。
+        
+        Args:
+            ratio: 移除点的比例，范围 [0, 1]。0 表示不移除任何点，1 表示移除所有点。
+        """
+        if len(self.nodes) == 0:
+            return
+            
+        # 确保比例在有效范围内
+        ratio = max(0.0, min(1.0, ratio))
+        
+        if ratio == 0.0:
+            return
+        elif ratio == 1.0:
+            self.nodes = np.empty((0, 2))
+            self.edges = set()
+            print(f"Removed all {len(self.nodes)} nodes.")
+            return
+        
+        # 计算每个点到原点的距离
+        distances = np.linalg.norm(self.nodes, axis=1)
+        
+        # 获取点的索引和距离，并按距离从大到小排序
+        sorted_indices = np.argsort(-distances)
+        
+        # 确定需要移除的点的数量
+        num_to_remove = int(len(self.nodes) * ratio)
+        num_to_remove = max(1, num_to_remove)  # 至少移除1个点
+        num_to_remove = min(len(self.nodes) - 1, num_to_remove)  # 至少保留1个点
+        
+        # 确定要移除的节点索引
+        indices_to_remove = sorted(sorted_indices[:num_to_remove])
+        
+        # 创建保留节点的掩码
+        keep_mask = np.ones(len(self.nodes), dtype=bool)
+        keep_mask[indices_to_remove] = False
+        
+        # 更新节点数组
+        new_nodes = self.nodes[keep_mask]
+        
+        # 创建旧索引到新索引的映射
+        old_to_new = {old_idx: new_idx for new_idx, old_idx in enumerate(np.where(keep_mask)[0])}
+        
+        # 更新边集
+        new_edges = set()
+        for u, v in self.edges:
+            if u in old_to_new and v in old_to_new:
+                new_edges.add((old_to_new[u], old_to_new[v]))
+        
+        # 更新内部状态
+        self.nodes = new_nodes
+        self.edges = new_edges
+        
+        print(f"Removed {len(indices_to_remove)} farthest points. Remaining nodes: {len(self.nodes)}, edges: {len(self.edges)}.")
+
     def k_core_pruning(self, k: int):
         """
         重复删除所有度数 <=k 的点，直到图为空或者所有点度数 >k 为止。

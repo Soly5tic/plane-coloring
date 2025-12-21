@@ -84,7 +84,7 @@ def load_model(model_path, device):
     return model
 
 
-def predict_graph(model, graph, device):
+def predict_graph(model, graph, device, temperature=1):
     """
     使用模型预测单个图是否可4染色
     :param model: 训练好的模型
@@ -98,7 +98,7 @@ def predict_graph(model, graph, device):
     
     model.eval()
     with torch.no_grad():
-        out = model(data)
+        out = model(data) / temperature
         prob = F.softmax(out, dim=1)
         pred_prob = prob[0][1].item()  # 获取可4染色（索引1）的概率
     

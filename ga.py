@@ -52,7 +52,7 @@ class UDGBuilderWrapper:
                 self.fitness = 2.0 * num_edges / num_nodes
             else:
                 # 模型预测的是"可4染色"的概率，所以1-pred_prob表示"难4染色"的程度
-                pred_prob = predict_graph(self.model, G, self.device)
+                pred_prob = predict_graph(self.model, G, self.device, temperature=10)
                 difficulty_score = 1.0 - pred_prob  # 难4染色的程度
                 
                 size_penalty = -0.0004 * max(0, num_nodes - 200)
@@ -211,6 +211,8 @@ class GeneticUDGSearch:
             degrees = dict(G.degree())
             if not degrees: return
             
+            nodes_before = len(builder.nodes)
+            
             avg_deg = sum(degrees.values()) / len(degrees)
             # 移除度数低于平均值的点（或者低于固定阈值如 2 或 3）
             threshold = min(3, int(avg_deg * 0.8)) 
@@ -225,6 +227,10 @@ class GeneticUDGSearch:
                 coords = builder.nodes[to_keep_indices]
                 builder.nodes = coords # Numpy array slicing
                 builder.compute_edges() # 重新计算边
+            
+            if len(builder.nodes) >= nodes_before:
+                builder.remove_farthest_points(ratio=0.5)
+                builder.compute_edges()
         
         # 安全检查：防止节点数归零
         if len(builder.nodes) == 0:
