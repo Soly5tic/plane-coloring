@@ -55,23 +55,27 @@ class UDGBuilderWrapper:
                 pred_prob = predict_graph(self.model, G, self.device)
                 difficulty_score = 1.0 - pred_prob  # 难4染色的程度
                 
-                # 大小惩罚：鼓励更小的图，使用节点数的倒数作为权重
-                size_penalty = 1.0 / num_nodes
+                size_penalty = -0.0004 * max(0, num_nodes - 200)
                 
                 # 组合得分：难4染色程度越高，图越小，适应度越高
-                # 放大size_penalty以便观察变化
-                self.fitness = difficulty_score + (1000 * size_penalty)
+                self.fitness = difficulty_score + size_penalty
         
         return self.fitness
 
 # --- 有理角度库生成器 ---
 def get_rational_angles():
-    angles = [np.arccos(1/3), np.arccos(-1/3)] # de Grey 的核心角度
-    # 添加勾股数角度 (3,4,5), (5,12,13) 等
-    triples = [(3,4,5), (5,12,13), (8,15,17), (7,24,25)]
-    for a, b, c in triples:
-        angles.append(np.arccos(a/c))
-        angles.append(np.arccos(-a/c))
+    angles = []
+    for a in range(2, 13):
+        for b in range(1, a):
+            angles.append(np.arccos(b/a))
+            angles.append(np.arccos(-b/a))
+            angles.append(np.arcsin(b/a))
+            angles.append(np.arcsin(-b/a))
+        for b in range(2, min(a*a, 13)):
+            angles.append(np.arccos(np.sqrt(b)/a))
+            angles.append(np.arccos(-np.sqrt(b)/a))
+            angles.append(np.arcsin(np.sqrt(b)/a))
+            angles.append(np.arcsin(-np.sqrt(b)/a))
     return list(set(angles))
 
 def k_core_prune(G: nx.Graph, k: int) -> nx.Graph:
@@ -100,7 +104,7 @@ class GeneticUDGSearch:
                  max_nodes=2000, 
                  mutation_rate=0.8, 
                  elite_size=3, 
-                 model_path="/home/xiezi/plane-coloring/best_4color_model.pth"):
+                 model_path="./best_4color_model.pth"):
         """
         Args:
             pop_size: 种群大小
@@ -138,10 +142,10 @@ class GeneticUDGSearch:
             
             # 初始种子：Moser Spindle
             # 为了增加多样性，给每个初始个体一个随机的整体旋转
-            initial_rotation = random.uniform(0, 2*np.pi)
+            initial_rotation = random.choice(RATIONAL_ANGLES)
             builder.add_moser_spindle(angle=initial_rotation)
             
-            wrapper = UDGBuilderWrapper(builder, self.gnn_model, self.device)
+            wrapper = UDGBuilderWrapper(builder, self.model, self.device)
             wrapper.update_fitness()
             self.population.append(wrapper)
 
@@ -273,7 +277,7 @@ class GeneticUDGSearch:
             next_gen.append(child)
             
         self.population = next_gen
-        if self.generation % 15 == 0:
+        if self.generation % 8 == 0:
             for udg in self.population:
                 udg.builder.k_core_pruning(3)
                 if len(udg.builder.nodes) == 0:

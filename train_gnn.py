@@ -135,7 +135,7 @@ def main():
     # 训练模型
     num_epochs = 1000
     best_val_accuracy = 0.0
-    best_model_path = "best_3color_model.pth"
+    best_model_path = "best_4color_model.pth"
     
     print("开始训练...")
     for epoch in range(num_epochs):
