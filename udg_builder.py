@@ -468,3 +468,16 @@ class UDGBuilder:
             self.edges = new_edges
         
         print(f"K-core pruning (k={k}) completed. Remaining nodes: {len(self.nodes)}, edges: {len(self.edges)}.")
+    
+    def merge(self, other: 'UDGBuilder'):
+        """
+        将另一个UDGBuilder的所有点加入当前UDGBuilder中，并重新去重和计算边。
+        
+        Args:
+            other: 要合并的另一个UDGBuilder对象。
+        """
+        if len(other.nodes) == 0:
+            return
+            
+        # 直接使用add_points方法，它会自动处理去重和边的重新计算
+        self.add_points(other.nodes)

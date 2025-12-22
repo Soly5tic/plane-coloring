@@ -151,12 +151,13 @@ class GeneticUDGSearch:
             wrapper.update_fitness()
             self.population.append(wrapper)
 
-    def _mutate(self, individual: UDGBuilderWrapper):
+    def _mutate(self, individual1: UDGBuilderWrapper, individual2: UDGBuilderWrapper):
         """
         变异算子核心逻辑。
         """
-        builder = individual.builder
-        current_nodes = len(builder.nodes)
+        builder1 = individual1.builder
+        builder2 = individual2.builder
+        current_nodes = len(builder1.nodes)
         
         # 策略选择概率
         # 如果节点数过多，强制增加 Pruning 的概率
@@ -169,6 +170,7 @@ class GeneticUDGSearch:
         
         if choice == 'rotate_merge':
             # --- 变异 1: Rotate & Merge ---
+            # 将第二个 UDGBuilder 旋转随机角度与第一个合并
             # 从有理角度库中随机选一个，或者微小概率选随机角度
             if random.random() < 0.9:
                 angle = random.choice(RATIONAL_ANGLES)
@@ -176,20 +178,22 @@ class GeneticUDGSearch:
                 angle = random.uniform(0.01, 1.0) # 小幅随机扰动
                 
             # 随机选择旋转中心 (原点或随机现有点)
-            if len(builder.nodes) > 0 and random.random() < 0.3:
-                pivot_idx = random.randint(0, len(builder.nodes)-1)
-                pivot = tuple(builder.nodes[pivot_idx])
+            if len(builder2.nodes) > 0 and random.random() < 0.3:
+                pivot_idx = random.randint(0, len(builder2.nodes)-1)
+                pivot = tuple(builder2.nodes[pivot_idx])
             else:
                 pivot = (0, 0)
                 
-            builder.rotate_and_copy(angle, pivot=pivot)
+            # 旋转第二个 UDGBuilder
+            temp_builder = copy.deepcopy(builder2)
+            temp_builder.rotate_and_copy(angle, pivot=pivot)
+            
+            # 合并到第一个 UDGBuilder
+            builder1.merge(temp_builder)
             
         elif choice == 'minkowski':
             # --- 变异 2: Minkowski Sum (Translation Copy) ---
-            # 实际上是 G U (G + v)，其中 |v|=1。
-            # 这相当于把图往某个方向平移一个单位距离并合并。
-            # 这会产生大量新的单位距离边（连接原图和影子图的对应点）。
-            
+            # 仅对第一个 UDGBuilder 进行操作
             if random.random() < 0.5:
                 theta = random.choice(RATIONAL_ANGLES)
             else:
@@ -197,23 +201,23 @@ class GeneticUDGSearch:
             translation_vector = np.array([np.cos(theta), np.sin(theta)])
             
             # 获取当前所有点，平移，然后添加回图中
-            if len(builder.nodes) > 0:
-                new_points = builder.nodes + translation_vector
-                builder.add_points(new_points)
-                builder.compute_edges()
+            if len(builder1.nodes) > 0:
+                new_points = builder1.nodes + translation_vector
+                builder1.add_points(new_points)
+                builder1.compute_edges()
                 
         elif choice == 'prune':
             # --- 变异 3: Pruning (K-Core Style) ---
-            # 移除低度数的点，保留核心冲突结构
-            G = individual.graph_cache
+            # 仅对第一个 UDGBuilder 进行操作
+            G = individual1.graph_cache
             if G is None: 
-                G = builder.get_graph()
+                G = builder1.get_graph()
             
             # 计算度数
             degrees = dict(G.degree())
             if not degrees: return
             
-            nodes_before = len(builder.nodes)
+            nodes_before = len(builder1.nodes)
             
             avg_deg = sum(degrees.values()) / len(degrees)
             # 移除度数低于平均值的点（或者低于固定阈值如 2 或 3）
@@ -223,21 +227,18 @@ class GeneticUDGSearch:
             
             if len(to_keep_indices) > 0:
                 # 更新 builder 的 nodes
-                # 注意：这里需要直接操作 builder 内部数据，比较 tricky
-                # 简单做法：提取保留点的坐标，清空 builder，重新添加
-                # (性能较低但实现安全)
-                coords = builder.nodes[to_keep_indices]
-                builder.nodes = coords # Numpy array slicing
-                builder.compute_edges() # 重新计算边
+                coords = builder1.nodes[to_keep_indices]
+                builder1.nodes = coords # Numpy array slicing
+                builder1.compute_edges() # 重新计算边
             
-            if len(builder.nodes) >= nodes_before:
-                builder.remove_farthest_points(ratio=0.5)
-                builder.compute_edges()
+            if len(builder1.nodes) >= nodes_before:
+                builder1.remove_farthest_points(ratio=0.5)
+                builder1.compute_edges()
         
         # 安全检查：防止节点数归零
-        if len(builder.nodes) == 0:
-            builder.add_moser_spindle()
-        G = builder.get_graph()
+        if len(builder1.nodes) == 0:
+            builder1.add_moser_spindle()
+        G = builder1.get_graph()
         coloring = nx.greedy_color(G, strategy='largest_first')
         est_chromatic = max(coloring.values()) + 1
         print(f"   --> Validation: Greedy Coloring uses {est_chromatic} colors.")
@@ -245,7 +246,7 @@ class GeneticUDGSearch:
             print(f"   --> Checking 4-colorability with SAT-solver...")
             if not is_colorable(G, 4):
                 print(f"   --> SAT-solver result: G is not 4-colorable!")
-                individual.fitness = 100000
+                individual1.fitness = 100000
             else:
                 print(f"   --> SAT-solver result: G is 4-colorable.")
         
@@ -281,7 +282,9 @@ class GeneticUDGSearch:
             
             # 变异
             if random.random() < self.mutation_rate:
-                self._mutate(child)
+                # 从 parent 列表中随机选择第二个 UDGBuilder
+                second_parent = random.choice(parents_pool)
+                self._mutate(child, second_parent)
             
             # 限制大小 (硬约束)
             if len(child.builder.nodes) > self.max_nodes:
