@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from typing import List, Optional
 from z3 import Solver, Bool, Or, And, Not
 import torch
+import os
 
 # 假设之前的代码保存在 udg_builder.py 中
 from udg_builder import UDGBuilder 
@@ -47,18 +48,19 @@ class UDGBuilderWrapper:
             self.fitness = 0.0
         else:
             # 使用GNN模型预测4染色可能性
-            if self.model is None or self.device is None:
-                # 如果没有模型，使用平均度数作为替代
-                self.fitness = 2.0 * num_edges / num_nodes
-            else:
-                # 模型预测的是"可4染色"的概率，所以1-pred_prob表示"难4染色"的程度
-                pred_prob = predict_graph(self.model, G, self.device, temperature=10)
-                difficulty_score = 1.0 - pred_prob  # 难4染色的程度
+            # if self.model is None or self.device is None:
+            #     # 如果没有模型，使用平均度数作为替代
+            #     self.fitness = 2.0 * num_edges / num_nodes
+            # else:
+            #     # 模型预测的是"可4染色"的概率，所以1-pred_prob表示"难4染色"的程度
+            #     pred_prob = predict_graph(self.model, G, self.device, temperature=10)
+            #     difficulty_score = 1.0 - pred_prob  # 难4染色的程度
                 
-                size_penalty = -0.0004 * max(0, num_nodes - 200)
+            #     size_penalty = -0.0004 * max(0, num_nodes - 200)
                 
-                # 组合得分：难4染色程度越高，图越小，适应度越高
-                self.fitness = difficulty_score + size_penalty
+            #     # 组合得分：难4染色程度越高，图越小，适应度越高
+            #     self.fitness = difficulty_score + size_penalty
+            self.fitness = 2.0 * num_edges / num_nodes
         
         return self.fitness
 
@@ -235,7 +237,18 @@ class GeneticUDGSearch:
         # 安全检查：防止节点数归零
         if len(builder.nodes) == 0:
             builder.add_moser_spindle()
-
+        G = builder.get_graph()
+        coloring = nx.greedy_color(G, strategy='largest_first')
+        est_chromatic = max(coloring.values()) + 1
+        print(f"   --> Validation: Greedy Coloring uses {est_chromatic} colors.")
+        if est_chromatic > 4:
+            print(f"   --> Checking 4-colorability with SAT-solver...")
+            if not is_colorable(G, 4):
+                print(f"   --> SAT-solver result: G is not 4-colorable!")
+                individual.fitness = 100000
+            else:
+                print(f"   --> SAT-solver result: G is 4-colorable.")
+        
     def step(self):
         """
         执行一代进化。
@@ -275,7 +288,9 @@ class GeneticUDGSearch:
                 # 强制修剪
                 # 这里的逻辑简化处理：如果太大，就重置回较小的状态或强力修剪
                 # 这里演示简单的强力 Pruning
-                child.builder.clean_isolated_nodes()
+                child.builder.k_core_pruning(3)
+                if len(child.builder.nodes) > self.max_nodes:
+                    child.builder.remove_farthest_points(0.5)
                 # 如果还大，可能需要更激进的随机采样保留
             
             # 计算子代适应度
@@ -313,7 +328,8 @@ if __name__ == "__main__":
     
     # 3. 运行进化循环
     try:
-        for i in range(50): # 运行 20 代试试
+        for i in range(500): # 运行 20 代试试
+            os.system("rm tmp/*.cnf")
             ga.step()
             
             best_G = ga.get_best_graph()
