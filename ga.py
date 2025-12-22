@@ -186,7 +186,7 @@ class GeneticUDGSearch:
                 
             # 旋转第二个 UDGBuilder
             temp_builder = copy.deepcopy(builder2)
-            temp_builder.rotate_and_copy(angle, pivot=pivot)
+            temp_builder.rotate(angle, pivot=pivot)
             
             # 合并到第一个 UDGBuilder
             builder1.merge(temp_builder)

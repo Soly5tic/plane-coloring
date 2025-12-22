@@ -263,6 +263,24 @@ class UDGBuilder:
         # 更新边
         self.compute_edges()
 
+    def rotate(self, angle: float, pivot: Tuple[float, float] = (0,0)):
+        """
+        将当前整个图绕 pivot 旋转 angle 度。
+        """
+        if len(self.nodes) == 0:
+            return
+
+        pivot_arr = np.array(pivot)
+        c, s = np.cos(angle), np.sin(angle)
+        R = np.array([[c, -s], [s, c]])
+        
+        # (P - origin) * R + origin
+        centered_nodes = self.nodes - pivot_arr
+        rotated_nodes = centered_nodes @ R.T + pivot_arr
+        
+        self.nodes = rotated_nodes
+        self.compute_edges()
+
     def rotate_and_copy(self, angle: float, pivot: Tuple[float, float] = (0,0)):
         """
         将当前整个图绕 pivot 旋转 angle 度，并将结果作为新点加入图中。
