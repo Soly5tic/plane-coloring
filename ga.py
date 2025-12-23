@@ -26,11 +26,6 @@ class UDGBuilderWrapper:
         self.model = model
         self.device = device
 
-    def copy(self):
-        """深拷贝当前个体，用于产生后代"""
-        new_builder = copy.deepcopy(self.builder)
-        return UDGBuilderWrapper(new_builder, self.model, self.device)
-
     def update_fitness(self):
         """
         计算适应度：结合GNN预测的4染色可能性和图的大小。
@@ -63,6 +58,13 @@ class UDGBuilderWrapper:
             self.fitness = 2.0 * num_edges / num_nodes
         
         return self.fitness
+
+    def copy(self):
+        """深拷贝当前个体，用于产生后代"""
+        new_builder = copy.deepcopy(self.builder)
+        new_wrapper = UDGBuilderWrapper(new_builder, self.model, self.device)
+        new_wrapper.update_fitness()
+        return new_wrapper
 
 # --- 有理角度库生成器 ---
 def get_rational_angles():
@@ -301,14 +303,14 @@ class GeneticUDGSearch:
             next_gen.append(child)
             
         self.population = next_gen
-        if self.generation % 8 == 0:
-            for udg in self.population:
-                udg.builder.k_core_pruning(3)
-                if len(udg.builder.nodes) == 0:
-                    udg.builder.add_moser_spindle()
-                udg.update_fitness()
-            next_gen = [udg for udg in next_gen if udg.fitness > 0]
-            self.population = next_gen
+        # if self.generation % 8 == 0:
+        #     for udg in self.population:
+        #         udg.builder.k_core_pruning(3)
+        #         if len(udg.builder.nodes) == 0:
+        #             udg.builder.add_moser_spindle()
+        #         udg.update_fitness()
+        #     next_gen = [udg for udg in next_gen if udg.fitness > 0]
+        #     self.population = next_gen
             
 
     def get_best_graph(self):
@@ -321,7 +323,7 @@ if __name__ == "__main__":
     # 1. 配置 GA
     ga = GeneticUDGSearch(
         pop_size=20,
-        max_nodes=1500,  # 限制图规模，防止变慢
+        max_nodes=5000,  # 限制图规模，防止变慢
         mutation_rate=0.9, # 高变异率，因为探索空间很大
         elite_size=2
     )
