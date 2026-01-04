@@ -207,7 +207,8 @@ class GeneticUDGSearch:
                 builder1.compute_edges()
                 
         elif choice == 'prune':
-            # --- 变异 3: Pruning (K-Core Style) ---
+            # --- 变异 3: Pruning (Low Degree Removal) ---
+            # 移除度数最小的点，这是更有效的图稀疏化策略
             # 仅对第一个 UDGBuilder 进行操作
             G = individual1.graph_cache
             if G is None: 
