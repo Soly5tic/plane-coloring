@@ -148,9 +148,9 @@ class IntegerRandomSearch:
         # 策略选择概率
         # 如果节点数过多，强制增加 Pruning 的概率
         if current_nodes > self.max_nodes:
-            probs = [0.3, 0.3, 0.4] # Rotate, Minkowski, Prune
+            probs = [0.1, 0.1, 0.8] # Rotate, Minkowski, Prune
         else:
-            probs = [0.5, 0.4, 0.1] # Rotate, Minkowski, Prune
+            probs = [0.7, 0.2, 0.1] # Rotate, Minkowski, Prune
             
         choice = random.choices(['rotate_merge', 'minkowski', 'prune'], weights=probs, k=1)[0]
         
@@ -197,6 +197,7 @@ class IntegerRandomSearch:
                     
                     # 直接添加代数点，避免float转换损失
                     builder.add_algebraic_points(new_points)
+                builder.compute_edges()
             
         elif choice == 'prune':
             # --- 变异 3: Pruning (Low Degree Removal) ---
@@ -220,13 +221,8 @@ class IntegerRandomSearch:
         # 安全检查：防止节点数归零
         if len(builder.points) == 0:
             builder.add_moser_spindle()
-        
-        # 检查图的大小是否超过点数上界，如果超过则剪枝到原来的一半以下
-        if len(builder.points) > self.max_nodes:
-            # 计算目标大小（原来的一半以下）
-            target_size = len(builder.points) // 2
-            builder.prune_to_size(target_size)
-        
+
+        print(f"{len(builder.points)} nodes, {len(builder.edges)} edges")
         # 验证图的4染色性
         G = builder.get_graph()
         coloring = nx.greedy_color(G, strategy='largest_first')
@@ -261,41 +257,33 @@ class IntegerRandomSearch:
             next_gen.append(self.population[i].copy())
             
         # 3. 繁殖与变异
-        while len(next_gen) < self.pop_size:
+        for parent in self.population[:self.pop_size // 2]:
             # 随机选择一个父代
-            parent = random.choice(self.population)
+            #parent = random.choice(self.population)
             # 复制产生子代
-            child = parent.copy()
+            for k in range(2):
+                child = parent.copy()
+                
+                # 变异
+                if random.random() < self.mutation_rate:
+                    self._mutate(child)
+    
+                if child.fitness > 10000:
+                    next_gen.append(child)
+                    next_gen.sort(key=lambda x: x.fitness, reverse=True)
+                    self.population = next_gen[:self.pop_size]
+                    return
+                # 限制大小 (硬约束)
+                if len(child.builder.points) > self.max_nodes:
+                    # 强制修剪
+                    child.builder.prune_to_size(len(child.builder.points) // 2)
+                
+                # 计算子代适应度
+                child.update_fitness()
+                next_gen.append(child)
             
-            # 变异
-            if random.random() < self.mutation_rate:
-                self._mutate(child)
-            
-            # 限制大小 (硬约束)
-            if len(child.builder.points) > self.max_nodes:
-                # 强制修剪
-                G = child.builder.get_graph()
-                degrees = dict(G.degree())
-                if degrees:
-                    # 移除度数最低的一半节点
-                    sorted_nodes = sorted(degrees.items(), key=lambda x: x[1])
-                    num_to_remove = len(sorted_nodes) // 2
-                    to_remove = [n for n, d in sorted_nodes[:num_to_remove]]
-                    
-                    # 更新 points
-                    new_points = []
-                    for i, point in enumerate(child.builder.points):
-                        if i not in to_remove:
-                            new_points.append(point)
-                    
-                    child.builder.points = new_points
-                    child.builder.compute_edges()
-            
-            # 计算子代适应度
-            child.update_fitness()
-            next_gen.append(child)
-            
-        self.population = next_gen
+        next_gen.sort(key=lambda x: x.fitness, reverse=True)
+        self.population = next_gen[:self.pop_size]
 
     def get_best_graph(self):
         self.population.sort(key=lambda x: x.fitness, reverse=True)

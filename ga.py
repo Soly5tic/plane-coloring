@@ -273,20 +273,23 @@ class GeneticUDGSearch:
             
         # 3. 繁殖与变异
         # 简单的轮盘赌或锦标赛选择，这里用简单的 Top-K 随机选择
-        parents_pool = self.population[:self.pop_size // 2] # 选前 50% 做父母
+        # parents_pool = self.population[:self.pop_size // 2] # 选前 50% 做父母
         
-        while len(next_gen) < self.pop_size:
+        for parent in self.population:
             # 选择父代
-            parent = random.choice(parents_pool)
+            # parent = random.choice(parents_pool)
             # 复制产生子代
             child = parent.copy()
             
             # 变异
             if random.random() < self.mutation_rate:
                 # 从 parent 列表中随机选择第二个 UDGBuilder
-                second_parent = random.choice(parents_pool)
-                self._mutate(child, second_parent)
-            
+                # second_parent = random.choice(parents_pool)
+                self._mutate(child, child)
+
+            if child.fitness > 10000:
+                next_gen.append(child)
+                break
             # 限制大小 (硬约束)
             if len(child.builder.nodes) > self.max_nodes:
                 # 强制修剪
@@ -300,8 +303,9 @@ class GeneticUDGSearch:
             # 计算子代适应度
             child.update_fitness()
             next_gen.append(child)
-            
-        self.population = next_gen
+
+        next_gen.sort(key=lambda x: x.fitness, reverse=True)
+        self.population = next_gen[:self.pop_size]
         if self.generation % 8 == 0:
             for udg in self.population:
                 udg.builder.k_core_pruning(3)
