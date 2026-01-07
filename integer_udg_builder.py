@@ -1,7 +1,7 @@
 # algebraic_udg_builder.py
 import itertools
 from fractions import Fraction
-from typing import List, Tuple, Dict, Iterable, Optional
+from typing import List, Tuple, Dict, Iterable, Optional, Union
 
 import networkx as nx
 import numpy as np
@@ -456,13 +456,29 @@ class AlgebraicUDGBuilder:
         self.points = new_points
         self.compute_edges()
 
-    def rotate_and_copy(self, rot: AlgebraicComplex, pivot: Tuple[float, float] = (0.0, 0.0)):
+    def rotate_and_copy(self, rot: AlgebraicComplex, pivot: Optional[Union[Tuple[float, float], AlgebraicComplex]] = None):
         """
         与原 UDGBuilder.rotate_and_copy 类似：在原图基础上添加一个旋转后的拷贝。
+        
+        pivot: 旋转中心，可以是浮点坐标元组或直接是 AlgebraicComplex 点
+               - 如果为 None，默认使用原点 (0, 0)
+               - 如果为浮点坐标元组，会被嵌入到代数域中
+               - 如果为 AlgebraicComplex，直接使用该点作为旋转中心
         """
         if not self.points:
             return
-        pv = self._embed_float_point(*pivot)
+            
+        # 处理旋转中心
+        if pivot is None:
+            # 默认使用原点
+            pv = AlgebraicComplex.from_rationals(self.field, Fraction(0), Fraction(0))
+        elif isinstance(pivot, AlgebraicComplex):
+            # 直接使用代数域坐标点
+            pv = pivot
+        else:
+            # 浮点坐标需要嵌入到代数域
+            pv = self._embed_float_point(*pivot)
+            
         new_points = []
         for z in self.points:
             z_shift = z.sub(pv)

@@ -165,9 +165,9 @@ class IntegerRandomSearch:
             # 随机选择旋转中心 (原点或随机现有点)
             if len(builder.points) > 0 and random.random() < 0.3:
                 pivot_idx = random.randint(0, len(builder.points)-1)
-                pivot = builder.points[pivot_idx].to_float_pair()
+                pivot = builder.points[pivot_idx]  # 直接使用 AlgebraicComplex 点
             else:
-                pivot = (0.0, 0.0)
+                pivot = None  # 使用默认原点
             
             # 旋转并复制
             builder.rotate_and_copy(rot, pivot=pivot)
@@ -182,18 +182,21 @@ class IntegerRandomSearch:
                 # 随机选择一条边
                 u, v = random.choice(edges)
                 
-                # 获取边的方向向量
-                u_pos = builder.points[u].to_float_pair()
-                v_pos = builder.points[v].to_float_pair()
-                translation_vector = np.array([v_pos[0] - u_pos[0], v_pos[1] - u_pos[1]])
+                # 获取边的方向向量（代数域精确计算）
+                u_point = builder.points[u]
+                v_point = builder.points[v]
+                translation_vector = v_point.sub(u_point)  # 使用代数点减法
                 
-                # 获取当前所有点，平移，然后添加回图中
+                # 获取当前所有点，进行代数平移
                 if len(builder.points) > 0:
-                    # 转换为numpy数组进行平移
-                    coords = np.array([p.to_float_pair() for p in builder.points])
-                    new_points = coords + translation_vector
-                    builder.add_points(new_points)
-                    builder.compute_edges()
+                    new_points = []
+                    for p in builder.points:
+                        # 使用代数点加法进行平移
+                        translated_point = p.add(translation_vector)
+                        new_points.append(translated_point)
+                    
+                    # 直接添加代数点，避免float转换损失
+                    builder.add_algebraic_points(new_points)
             
         elif choice == 'prune':
             # --- 变异 3: Pruning (Low Degree Removal) ---
