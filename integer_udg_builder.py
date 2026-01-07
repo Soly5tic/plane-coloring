@@ -247,6 +247,15 @@ class AlgebraicComplex:
         self.real = real if real is not None else self.K.zero()
         self.imag = imag if imag is not None else self.K.zero()
 
+    def __eq__(self, other: "AlgebraicComplex") -> bool:
+        return self.K.equal(self.real, other.real) and self.K.equal(self.imag, other.imag)
+
+    def __hash__(self) -> int:
+        # 将 real 和 imag 转换为不可变的元组形式以用于哈希
+        real_tuple = tuple(self.real)
+        imag_tuple = tuple(self.imag)
+        return hash((real_tuple, imag_tuple))
+
     @classmethod
     def from_rationals(cls, field: AlgebraicField, x: Fraction, y: Fraction):
         return cls(field, field.from_rational(x), field.from_rational(y))
@@ -348,18 +357,13 @@ class AlgebraicUDGBuilder:
             return
         new_pts = [self._embed_float_point(x, y) for x, y in points]
 
-        # 去重：简单 O(N^2) 检查，数量大时可以改成哈希（例如以近似浮点做 bucket）
+        # 使用哈希集合高效去重
+        point_set = set(self.points)
         for p in new_pts:
-            duplicate = False
-            pf = p.to_float_pair()
-            for q in self.points:
-                qf = q.to_float_pair()
-                if (pf[0] - qf[0]) ** 2 + (pf[1] - qf[1]) ** 2 < self.tolerance ** 2:
-                    # 近似完全重合，则视为同点
-                    duplicate = True
-                    break
-            if not duplicate:
-                self.points.append(p)
+            if p not in point_set:
+                point_set.add(p)
+        # 更新点列表
+        self.points = list(point_set)
         # 更新边
         self.compute_edges()
 
@@ -371,17 +375,12 @@ class AlgebraicUDGBuilder:
         """
         new_point = AlgebraicComplex(self.field, real, imag)
         
-        # 去重检查
-        duplicate = False
-        new_float = new_point.to_float_pair()
-        for existing in self.points:
-            existing_float = existing.to_float_pair()
-            if (new_float[0] - existing_float[0]) ** 2 + (new_float[1] - existing_float[1]) ** 2 < self.tolerance ** 2:
-                duplicate = True
-                break
-        
-        if not duplicate:
-            self.points.append(new_point)
+        # 使用哈希集合高效去重
+        point_set = set(self.points)
+        if new_point not in point_set:
+            point_set.add(new_point)
+            # 更新点列表
+            self.points = list(point_set)
             # 更新边
             self.compute_edges()
 
@@ -393,21 +392,19 @@ class AlgebraicUDGBuilder:
         if not points:
             return
             
-        # 去重检查
+        # 使用哈希集合高效去重
+        point_set = set(self.points)
+        added_new = False
         for new_point in points:
-            duplicate = False
-            new_float = new_point.to_float_pair()
-            for existing in self.points:
-                existing_float = existing.to_float_pair()
-                if (new_float[0] - existing_float[0]) ** 2 + (new_float[1] - existing_float[1]) ** 2 < self.tolerance ** 2:
-                    duplicate = True
-                    break
-            
-            if not duplicate:
-                self.points.append(new_point)
+            if new_point not in point_set:
+                point_set.add(new_point)
+                added_new = True
         
-        # 更新边
-        self.compute_edges()
+        if added_new:
+            # 更新点列表
+            self.points = list(point_set)
+            # 更新边
+            self.compute_edges()
 
     def compute_edges(self):
         """

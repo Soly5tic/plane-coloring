@@ -332,12 +332,17 @@ if __name__ == "__main__":
     plt.title(f"Evolved Integer UDG (Avg Deg: {2*best_G.number_of_edges()/best_G.number_of_nodes():.2f})")
     plt.show()
     
-    # 保存最佳图到文件
-    graph_filename = "best_graph.graphml"
-    nx.write_graphml(best_G, graph_filename)
-    print(f"Best graph saved to {graph_filename}")
-    
-    # 同时保存为邻接表格式（可选，便于查看）
-    adjacency_filename = "best_graph_adjacency.txt"
-    nx.write_adjlist(best_G, adjacency_filename)
-    print(f"Best graph adjacency list saved to {adjacency_filename}")
+    # 保存图中所有点的坐标
+    coordinates_filename = "best_graph_coordinates.txt"
+    pos = nx.get_node_attributes(best_G, 'pos')
+    with open(coordinates_filename, 'w') as f:
+        # 写入点的数量和边的数量
+        f.write(f"{best_G.number_of_nodes()} {best_G.number_of_edges()}\n")
+        # 写入每个点的坐标
+        for node_id in sorted(pos.keys()):
+            x, y = pos[node_id]
+            f.write(f"{node_id} {x} {y}\n")
+        # 写入每条边
+        for u, v in best_G.edges():
+            f.write(f"{u} {v}\n")
+    print(f"Best graph coordinates saved to {coordinates_filename}")
