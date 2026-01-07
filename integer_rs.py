@@ -72,7 +72,7 @@ def generate_rotation_library(field: AlgebraicField) -> List[AlgebraicComplex]:
     生成一个旋转库，包含 unit-norm 的 AlgebraicComplex 元素
     这里简单生成一些基本的旋转，后续可以扩展
     """
-    rotations = []
+    rotations = [AlgebraicComplex(field, field.one(), field.zero())]
     
     for a in range(2, 12):
         for b in range(1, 6):
@@ -138,11 +138,12 @@ class IntegerRandomSearch:
             wrapper.update_fitness()
             self.population.append(wrapper)
 
-    def _mutate(self, individual: IntegerUDGWrapper):
+    def _mutate(self, individual: IntegerUDGWrapper, other_individual: IntegerUDGWrapper):
         """
         变异算子核心逻辑。
         """
         builder = individual.builder
+        other_builder = other_individual.builder
         current_nodes = len(builder.points)
         
         # 策略选择概率
@@ -150,13 +151,13 @@ class IntegerRandomSearch:
         if current_nodes > self.max_nodes:
             probs = [0.1, 0.1, 0.8] # Rotate, Minkowski, Prune
         else:
-            probs = [0.7, 0.2, 0.1] # Rotate, Minkowski, Prune
+            probs = [0.5, 0.4, 0.1] # Rotate, Minkowski, Prune
             
         choice = random.choices(['rotate_merge', 'minkowski', 'prune'], weights=probs, k=1)[0]
         
         if choice == 'rotate_merge':
             # --- 变异 1: Rotate & Merge ---
-            # 随机旋转并复制当前图形
+            # 随机旋转并复制当前图形（仅对第一个builder操作）
             
             # 从旋转库中随机选择一个旋转
             rotation_library = generate_rotation_library(builder.field)
@@ -174,49 +175,32 @@ class IntegerRandomSearch:
             
         elif choice == 'minkowski':
             # --- 变异 2: Minkowski Sum ---
-            # 从图中随机选择一条边，以该边的方向作为平移方向
-            G = builder.get_graph()
-            edges = list(G.edges())
+            # 将两个图剪枝到 sqrt(self.max_nodes) 大小
+            prune_size = int(math.sqrt(self.max_nodes))
             
-            if edges:
-                # 随机选择一条边
-                u, v = random.choice(edges)
-                
-                # 获取边的方向向量（代数域精确计算）
-                u_point = builder.points[u]
-                v_point = builder.points[v]
-                translation_vector = v_point.sub(u_point)  # 使用代数点减法
-                
-                # 获取当前所有点，进行代数平移
-                if len(builder.points) > 0:
-                    new_points = []
-                    for p in builder.points:
-                        # 使用代数点加法进行平移
-                        translated_point = p.add(translation_vector)
-                        new_points.append(translated_point)
-                    
-                    # 直接添加代数点，避免float转换损失
-                    builder.add_algebraic_points(new_points)
-                builder.compute_edges()
+            # 对第一个图剪枝
+            temp_builder1 = copy.deepcopy(builder)
+            temp_builder1.prune_to_size(prune_size)
+            
+            # 对第二个图剪枝
+            temp_builder2 = copy.deepcopy(other_builder)
+            temp_builder2.prune_to_size(prune_size)
+            
+            # 计算点集的闵可夫斯基和
+            new_points = []
+            for p1 in temp_builder1.points:
+                for p2 in temp_builder2.points:
+                    sum_point = p1.add(p2)
+                    new_points.append(sum_point)
+            
+            # 添加到第一个builder
+            builder.add_algebraic_points(new_points)
+            builder.compute_edges()
             
         elif choice == 'prune':
             # --- 变异 3: Pruning (Low Degree Removal) ---
-            # 移除度数最小的点，这是更有效的图稀疏化策略
-            G = builder.get_graph()
-            degrees = dict(G.degree())
-            if not degrees: return
-            
-            avg_deg = sum(degrees.values()) / len(degrees)
-            # 移除度数低于平均值的点
-            threshold = min(3, int(avg_deg * 0.8)) 
-            
-            to_keep_indices = [n for n, d in degrees.items() if d >= threshold]
-            
-            if len(to_keep_indices) > 0:
-                # 更新 builder 的 points
-                coords = [builder.points[i] for i in to_keep_indices]
-                builder.points = coords
-                builder.compute_edges()
+            # 移除度数最小的点（仅对第一个builder操作）
+            builder.prune_to_size(len(builder.points) // 2)
         
         # 安全检查：防止节点数归零
         if len(builder.points) == 0:
@@ -266,7 +250,9 @@ class IntegerRandomSearch:
                 
                 # 变异
                 if random.random() < self.mutation_rate:
-                    self._mutate(child)
+                    # 从父母列表中随机选取第二个参数
+                    other_parent = random.choice(self.population[:self.pop_size // 2])
+                    self._mutate(child, other_parent)
     
                 if child.fitness > 10000:
                     next_gen.append(child)
@@ -292,8 +278,8 @@ class IntegerRandomSearch:
 if __name__ == "__main__":
     # 1. 配置随机搜索
     rs = IntegerRandomSearch(
-        pop_size=20,
-        max_nodes=1500,  # 限制图规模，防止变慢
+        pop_size=100,
+        max_nodes=2500,  # 限制图规模，防止变慢
         mutation_rate=0.9, # 高变异率，因为探索空间很大
         elite_size=2
     )
@@ -342,3 +328,13 @@ if __name__ == "__main__":
             nx.draw_networkx_edges(best_G, pos, alpha=0.1)
     plt.title(f"Evolved Integer UDG (Avg Deg: {2*best_G.number_of_edges()/best_G.number_of_nodes():.2f})")
     plt.show()
+    
+    # 保存最佳图到文件
+    graph_filename = "best_graph.graphml"
+    nx.write_graphml(best_G, graph_filename)
+    print(f"Best graph saved to {graph_filename}")
+    
+    # 同时保存为邻接表格式（可选，便于查看）
+    adjacency_filename = "best_graph_adjacency.txt"
+    nx.write_adjlist(best_G, adjacency_filename)
+    print(f"Best graph adjacency list saved to {adjacency_filename}")

@@ -442,37 +442,48 @@ class AlgebraicUDGBuilder:
         Args:
             n: 目标最大点数
         """
-        while len(self.points) > n:
-            G = self.get_graph()
-            
-            if G.number_of_nodes() == 0:
-                break
-            
+        if len(self.points) <= n:
+            return
+        
+        # 获取当前的图结构
+        G = self.get_graph()
+        
+        if G.number_of_nodes() == 0:
+            return
+        
+        # 标记要删除的节点
+        to_remove = set()
+        current_size = len(self.points)
+        
+        # 复制图进行操作
+        working_graph = G.copy()
+        
+        while current_size - len(to_remove) > n:
             # 检查图是否连通
-            if nx.is_connected(G):
-                # 图连通，删除度数最小的点
-                degrees = dict(G.degree())
-                if degrees:
-                    # 找到度数最小的点
-                    min_degree = min(degrees.values())
-                    min_degree_nodes = [node for node, d in degrees.items() if d == min_degree]
-                    
-                    # 删除所有度数最小的点
-                    new_points = []
-                    for i, point in enumerate(self.points):
-                        if i not in min_degree_nodes:
-                            new_points.append(point)
-                    
-                    self.points = new_points
-                    self.compute_edges()
+            if nx.is_connected(working_graph):
+                # 图连通，找到度数最小的点
+                degrees = dict(working_graph.degree())
+                if not degrees:
+                    break
+                
+                # 找到度数最小的点
+                min_degree = min(degrees.values())
+                min_degree_nodes = [node for node, d in degrees.items() if d == min_degree]
+                
+                # 标记要删除的点
+                for node in min_degree_nodes:
+                    to_remove.add(node)
+                
+                # 从工作图中删除这些点
+                working_graph.remove_nodes_from(min_degree_nodes)
             else:
-                # 图不连通，删除平均度数更小的连通块
-                components = list(nx.connected_components(G))
+                # 图不连通，找到平均度数更小的连通块
+                components = list(nx.connected_components(working_graph))
                 
                 # 计算每个连通块的平均度数
                 component_stats = []
                 for component in components:
-                    subgraph = G.subgraph(component)
+                    subgraph = working_graph.subgraph(component)
                     num_nodes = subgraph.number_of_nodes()
                     num_edges = subgraph.number_of_edges()
                     avg_degree = 2 * num_edges / num_nodes if num_nodes > 0 else 0
@@ -482,14 +493,30 @@ class AlgebraicUDGBuilder:
                 component_stats.sort(key=lambda x: (x[0], x[1]))
                 component_to_remove = component_stats[0][2]
                 
-                # 删除该连通块中的所有节点
-                new_points = []
-                for i, point in enumerate(self.points):
-                    if i not in component_to_remove:
-                        new_points.append(point)
+                # 标记要删除的点
+                for node in component_to_remove:
+                    to_remove.add(node)
                 
-                self.points = new_points
-                self.compute_edges()
+                # 从工作图中删除这些点
+                working_graph.remove_nodes_from(component_to_remove)
+            
+            # 如果工作图为空，停止
+            if working_graph.number_of_nodes() == 0:
+                break
+        
+        # 如果没有要删除的点，直接返回
+        if not to_remove:
+            return
+        
+        # 更新点列表，排除要删除的点
+        new_points = []
+        for i, point in enumerate(self.points):
+            if i not in to_remove:
+                new_points.append(point)
+        
+        # 更新 points 并调用一次 compute_edges
+        self.points = new_points
+        self.compute_edges()
 
     # -------- 旋转相关 ------------
 
