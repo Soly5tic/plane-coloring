@@ -419,7 +419,7 @@ class AlgebraicUDGBuilder:
         coords = np.array([p.to_float_pair() for p in self.points])
         tree = KDTree(coords)
         # 先找距离 <= 1 + tol 的对
-        candidate_pairs = tree.query_pairs(r=1.0 + self.tolerance)
+        candidate_pairs = tree.query_pairs(r=1.5)
         edges = set()
         for i, j in candidate_pairs:
             # 用代数精确判定
@@ -434,6 +434,62 @@ class AlgebraicUDGBuilder:
             G.add_node(i, pos=(x, y))
         G.add_edges_from(self.edges)
         return G
+
+    def prune_to_size(self, n: int):
+        """
+        通过重复删去度数最小的点，并在图不连通时删去平均度数更小的连通块，将图的点数降到 n 以下。
+        
+        Args:
+            n: 目标最大点数
+        """
+        while len(self.points) > n:
+            G = self.get_graph()
+            
+            if G.number_of_nodes() == 0:
+                break
+            
+            # 检查图是否连通
+            if nx.is_connected(G):
+                # 图连通，删除度数最小的点
+                degrees = dict(G.degree())
+                if degrees:
+                    # 找到度数最小的点
+                    min_degree = min(degrees.values())
+                    min_degree_nodes = [node for node, d in degrees.items() if d == min_degree]
+                    
+                    # 删除所有度数最小的点
+                    new_points = []
+                    for i, point in enumerate(self.points):
+                        if i not in min_degree_nodes:
+                            new_points.append(point)
+                    
+                    self.points = new_points
+                    self.compute_edges()
+            else:
+                # 图不连通，删除平均度数更小的连通块
+                components = list(nx.connected_components(G))
+                
+                # 计算每个连通块的平均度数
+                component_stats = []
+                for component in components:
+                    subgraph = G.subgraph(component)
+                    num_nodes = subgraph.number_of_nodes()
+                    num_edges = subgraph.number_of_edges()
+                    avg_degree = 2 * num_edges / num_nodes if num_nodes > 0 else 0
+                    component_stats.append((avg_degree, num_nodes, component))
+                
+                # 找到平均度数最小的连通块（如果有多个，选择节点数最少的）
+                component_stats.sort(key=lambda x: (x[0], x[1]))
+                component_to_remove = component_stats[0][2]
+                
+                # 删除该连通块中的所有节点
+                new_points = []
+                for i, point in enumerate(self.points):
+                    if i not in component_to_remove:
+                        new_points.append(point)
+                
+                self.points = new_points
+                self.compute_edges()
 
     # -------- 旋转相关 ------------
 

@@ -221,6 +221,12 @@ class IntegerRandomSearch:
         if len(builder.points) == 0:
             builder.add_moser_spindle()
         
+        # 检查图的大小是否超过点数上界，如果超过则剪枝到原来的一半以下
+        if len(builder.points) > self.max_nodes:
+            # 计算目标大小（原来的一半以下）
+            target_size = len(builder.points) // 2
+            builder.prune_to_size(target_size)
+        
         # 验证图的4染色性
         G = builder.get_graph()
         coloring = nx.greedy_color(G, strategy='largest_first')
