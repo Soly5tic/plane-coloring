@@ -581,12 +581,8 @@ class AlgebraicUDGBuilder:
         如果你在构造时完全用 Fraction 和 sqrt(3) 的线性组合，就可以避免
         从 float 反推。
         """
-        ox, oy = origin
-        h = np.sqrt(3) / 2.0
-        pts = np.array([
-            [0.0 + ox, 0.0 + oy],
-            [1.0 + ox, 0.0 + oy],
-            [0.5 + ox,  h + oy],
-            [0.5 + ox, -h + oy],
+        self.add_algebraic_points([
+            AlgebraicComplex.from_rationals(self.field, Fraction(0), Fraction(0)),
+            AlgebraicComplex.from_rationals(self.field, Fraction(1), Fraction(0)),
+            AlgebraicComplex.from_rationals(self.field, Fraction(1), Fraction(1)),
         ])
-        self.add_points(pts)  # 嵌入 + 去重 + compute_edges

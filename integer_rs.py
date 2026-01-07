@@ -74,19 +74,22 @@ def generate_rotation_library(field: AlgebraicField) -> List[AlgebraicComplex]:
     """
     rotations = [AlgebraicComplex(field, field.one(), field.zero())]
     
-    for a in range(2, 12):
-        for b in range(1, 6):
+    for a in range(2, 5):
+        for b in range(1, 3):
             if math.sqrt(a) / b >= math.sqrt(2) / 2:
                 cosv_val = 1 - 1 / ((2 * a) / (b * b))
-                cosv = field.from_rational(Fraction(cosv_val).limit_denominator())
+                cosv = field.sub(field.one(), field.scalar_mul(Fraction(b * b, 2 * a), field.one()))
                 try:
-                    rtv = field.get_root(4 * (2 * a) - (b * b))
+                    rtv = field.get_root(4 * a - (b * b))
                     rtv = field.scalar_mul(Fraction(1, b), rtv)
                     sinv = field.scalar_mul(Fraction(b * b, 2 * a), rtv)
                     rotations.append(AlgebraicComplex(field, cosv, sinv))
                     rotations.append(AlgebraicComplex(field, cosv, field.scalar_mul(Fraction(-1, 1), sinv)))
                 except ValueError:
                     pass
+    for rot in rotations:
+        #print(rot.to_float_pair())
+        assert field.equal(field.one(), rot.abs2())
     return rotations
 
 class IntegerRandomSearch:
@@ -128,7 +131,7 @@ class IntegerRandomSearch:
         
         for _ in range(self.pop_size):
             # 创建基础构建器，使用包含 sqrt(3)、sqrt(5) 和 sqrt(11) 的扩域
-            builder = AlgebraicUDGBuilder(self.square_roots, tolerance=1e-5)
+            builder = AlgebraicUDGBuilder(self.square_roots, tolerance=1e-9)
             
             # 初始种子：Moser Spindle
             # 为了增加多样性，给每个初始个体一个随机的整体旋转
@@ -151,7 +154,7 @@ class IntegerRandomSearch:
         if current_nodes > self.max_nodes:
             probs = [0.1, 0.1, 0.8] # Rotate, Minkowski, Prune
         else:
-            probs = [0.5, 0.4, 0.1] # Rotate, Minkowski, Prune
+            probs = [0.5, 0.5, 0] # Rotate, Minkowski, Prune
             
         choice = random.choices(['rotate_merge', 'minkowski', 'prune'], weights=probs, k=1)[0]
         
@@ -176,7 +179,7 @@ class IntegerRandomSearch:
         elif choice == 'minkowski':
             # --- 变异 2: Minkowski Sum ---
             # 将两个图剪枝到 sqrt(self.max_nodes) 大小
-            prune_size = int(math.sqrt(self.max_nodes))
+            prune_size = 100
             
             # 对第一个图剪枝
             temp_builder1 = copy.deepcopy(builder)
@@ -241,11 +244,11 @@ class IntegerRandomSearch:
             next_gen.append(self.population[i].copy())
             
         # 3. 繁殖与变异
-        for parent in self.population[:self.pop_size // 2]:
+        for parent in self.population:
             # 随机选择一个父代
             #parent = random.choice(self.population)
             # 复制产生子代
-            for k in range(2):
+            for k in range(5):
                 child = parent.copy()
                 
                 # 变异
@@ -262,7 +265,7 @@ class IntegerRandomSearch:
                 # 限制大小 (硬约束)
                 if len(child.builder.points) > self.max_nodes:
                     # 强制修剪
-                    child.builder.prune_to_size(len(child.builder.points) // 2)
+                    child.builder.prune_to_size(self.max_nodes)
                 
                 # 计算子代适应度
                 child.update_fitness()
@@ -278,10 +281,10 @@ class IntegerRandomSearch:
 if __name__ == "__main__":
     # 1. 配置随机搜索
     rs = IntegerRandomSearch(
-        pop_size=100,
+        pop_size=50,
         max_nodes=2500,  # 限制图规模，防止变慢
         mutation_rate=0.9, # 高变异率，因为探索空间很大
-        elite_size=2
+        elite_size=5
     )
     
     # 2. 初始化
