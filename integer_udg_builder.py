@@ -580,8 +580,19 @@ class AlgebraicUDGBuilder:
         如果你在构造时完全用 Fraction 和 sqrt(3) 的线性组合，就可以避免
         从 float 反推。
         """
+        def halve(a):
+            return self.field.scalar_mul(Fraction(1, 2), a)
+        def mhalve(a):
+            return self.field.scalar_mul(Fraction(-1, 2), a)
+        s3 = self.field.get_root(3)
         self.add_algebraic_points([
             AlgebraicComplex.from_rationals(self.field, Fraction(0), Fraction(0)),
-            AlgebraicComplex.from_rationals(self.field, Fraction(1), Fraction(0)),
-            AlgebraicComplex.from_rationals(self.field, Fraction(1), Fraction(1)),
+            AlgebraicComplex(self.field, real=halve(self.field.one), imag=halve(s3)),
+            AlgebraicComplex(self.field, real=mhalve(self.field.one), imag=halve(s3)),
+            AlgebraicComplex(self.field, real=self.field.zero, imag=s3),
         ])
+        rot = AlgebraicComplex(self.field, 
+                               real=self.field.scalar_mul(Fraction(5, 6), self.field.one),
+                               imag=self.field.scalar_mul(Fraction(1, 6), self.field.get_root(11)))
+        self.rotate_and_copy(rot, pivot=None)
+        

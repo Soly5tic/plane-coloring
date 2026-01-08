@@ -221,6 +221,8 @@ class IntegerRandomSearch:
         self.population = []
         print(f"Initializing population of size {self.pop_size}...")
         
+        rotations = generate_rotation_library(AlgebraicField(self.square_roots))
+
         for _ in range(self.pop_size):
             # 创建基础构建器，使用包含 sqrt(3)、sqrt(5) 和 sqrt(11) 的扩域
             builder = AlgebraicUDGBuilder(self.square_roots, tolerance=1e-9)
@@ -228,6 +230,7 @@ class IntegerRandomSearch:
             # 初始种子：Moser Spindle
             # 为了增加多样性，给每个初始个体一个随机的整体旋转
             builder.add_moser_spindle()
+            builder.rotate(random.choice(rotations), pivot=None)
             
             wrapper = IntegerUDGWrapper(builder)
             wrapper.update_fitness()
