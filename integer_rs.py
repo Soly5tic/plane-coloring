@@ -7,10 +7,12 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 from typing import List, Optional, Tuple
 from fractions import Fraction
+import multiprocessing
 
 # 导入 AlgebraicUDGBuilder
 from integer_udg_builder import AlgebraicUDGBuilder, AlgebraicField, AlgebraicComplex
 from graph_coloring import is_colorable
+import time
 
 # 假设之前的代码保存在 integer_udg_builder.py 中
 
@@ -66,6 +68,95 @@ class IntegerUDGWrapper:
             
             self.builder.points = new_points
             self.builder.compute_edges()
+
+# --- 并行变异辅助函数 --- 
+def parallel_mutate(parent, other_parents, mutation_rate, max_nodes):
+    """
+    可以被并行调用的变异函数。
+    
+    Args:
+        parent: 父代个体
+        other_parents: 其他父代个体的列表
+        mutation_rate: 变异概率
+        max_nodes: 最大节点数
+        
+    Returns:
+        变异后的子代个体
+    """
+    # 复制父代
+    child = parent.copy()
+    
+    # 以指定概率进行变异
+    if random.random() < mutation_rate:
+        # 从other_parents中随机选择一个个体
+        other_parent = random.choice(other_parents[:len(other_parents) // 2])
+        
+        # 实现变异逻辑
+        builder = child.builder
+        other_builder = other_parent.builder
+        current_nodes = len(builder.points)
+        
+        # 策略选择概率
+        if current_nodes > max_nodes:
+            probs = [0.1, 0.1, 0.8]  # Rotate, Minkowski, Prune
+        else:
+            probs = [0.5, 0.5, 0]  # Rotate, Minkowski, Prune
+            
+        choice = random.choices(['rotate_merge', 'minkowski', 'prune'], weights=probs, k=1)[0]
+        
+        if choice == 'rotate_merge':
+            # 从旋转库中随机选择一个旋转
+            rotation_library = generate_rotation_library(builder.field)
+            rot = random.choice(rotation_library)
+            
+            # 随机选择旋转中心
+            if len(builder.points) > 0 and random.random() < 0.3:
+                pivot_idx = random.randint(0, len(builder.points)-1)
+                pivot = builder.points[pivot_idx]
+            else:
+                pivot = None
+                
+            builder.rotate_and_copy(rot, pivot=pivot)
+            
+        elif choice == 'minkowski':
+            prune_size = 100
+            
+            # 对第一个图剪枝
+            temp_builder1 = copy.deepcopy(builder)
+            temp_builder1.prune_to_size(prune_size)
+            
+            # 对第二个图剪枝
+            temp_builder2 = copy.deepcopy(other_builder)
+            temp_builder2.prune_to_size(prune_size)
+            
+            # 计算点集的闵可夫斯基和
+            new_points = []
+            for p1 in temp_builder1.points:
+                for p2 in temp_builder2.points:
+                    sum_point = p1.add(p2)
+                    new_points.append(sum_point)
+            
+            # 添加到builder
+            builder.add_algebraic_points(new_points)
+            builder.compute_edges()
+            
+        elif choice == 'prune':
+            # 移除度数最小的点
+            builder.prune_to_size(len(builder.points) // 2)
+        
+        # 安全检查：防止节点数归零
+        if len(builder.points) == 0:
+            builder.add_moser_spindle()
+    
+    # 限制大小（硬约束）
+    if len(child.builder.points) > max_nodes:
+        # 强制修剪
+        child.builder.prune_to_size(max_nodes)
+    
+    # 更新适应度
+    child.update_fitness()
+    
+    return child
 
 # --- 旋转库生成器 --- 
 def generate_rotation_library(field: AlgebraicField) -> List[AlgebraicComplex]:
@@ -142,7 +233,7 @@ class IntegerRandomSearch:
             wrapper.update_fitness()
             self.population.append(wrapper)
 
-    def _mutate(self, individual: IntegerUDGWrapper, other_individual: IntegerUDGWrapper):
+    def _mutate(self, individual: IntegerUDGWrapper, other_individual: IntegerUDGWrapper, max_nodes: int):
         """
         变异算子核心逻辑。
         """
@@ -152,7 +243,7 @@ class IntegerRandomSearch:
         
         # 策略选择概率
         # 如果节点数过多，强制增加 Pruning 的概率
-        if current_nodes > self.max_nodes:
+        if current_nodes > max_nodes:
             probs = [0.1, 0.1, 0.8] # Rotate, Minkowski, Prune
         else:
             probs = [0.5, 0.5, 0] # Rotate, Minkowski, Prune
@@ -245,34 +336,33 @@ class IntegerRandomSearch:
             # 直接保留，深拷贝以防意外修改
             next_gen.append(self.population[i].copy())
             
-        # 3. 繁殖与变异
-        for parent in tqdm(self.population, desc='Mutating:'):
-            # 随机选择一个父代
-            #parent = random.choice(self.population)
-            # 复制产生子代
-            for k in range(5):
-                child = parent.copy()
-                
-                # 变异
-                if random.random() < self.mutation_rate:
-                    # 从父母列表中随机选取第二个参数
-                    other_parent = random.choice(self.population[:self.pop_size // 2])
-                    self._mutate(child, other_parent)
-    
-                if child.fitness > 10000:
-                    next_gen.append(child)
-                    next_gen.sort(key=lambda x: x.fitness, reverse=True)
-                    self.population = next_gen[:self.pop_size]
-                    return
-                # 限制大小 (硬约束)
-                if len(child.builder.points) > self.max_nodes:
-                    # 强制修剪
-                    child.builder.prune_to_size(self.max_nodes)
-                
-                # 计算子代适应度
-                child.update_fitness()
+        # 3. 繁殖与变异 (并行处理)
+        # 创建任务列表
+        tasks = []
+        for parent in self.population:
+            for _ in range(5):
+                tasks.append((parent, self.population, self.mutation_rate, self.max_nodes))
+        
+        # 使用multiprocessing并行执行变异
+        print(f"Mutating: {len(tasks)} tasks...")
+        # 使用multiprocessing并行执行变异并统计耗时
+        print(f"Mutating: {len(tasks)} tasks...")
+        t0 = time.time()
+        with multiprocessing.Pool() as pool:
+            children = pool.starmap(parallel_mutate, tasks)
+        elapsed = time.time() - t0
+        print(f"Parallel mutation finished in {elapsed:.2f} seconds.")
+        
+        # 4. 处理结果
+        for child in children:
+            if child.fitness > 10000:
                 next_gen.append(child)
+                next_gen.sort(key=lambda x: x.fitness, reverse=True)
+                self.population = next_gen[:self.pop_size]
+                return
             
+            next_gen.append(child)
+        
         next_gen.sort(key=lambda x: x.fitness, reverse=True)
         self.population = next_gen[:self.pop_size]
 
