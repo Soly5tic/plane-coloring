@@ -28,7 +28,10 @@ class IntegerUDGWrapper:
     def copy(self):
         """深拷贝当前个体，用于产生后代"""
         new_builder = copy.deepcopy(self.builder)
-        return IntegerUDGWrapper(new_builder)
+        result = IntegerUDGWrapper(new_builder)
+        result.fitness = copy.deepcopy(self.fitness)
+        result.graph_cache = copy.deepcopy(self.graph_cache)
+        return result
 
     def update_fitness(self):
         """
@@ -100,7 +103,7 @@ def parallel_mutate(parent, other_parents, mutation_rate, max_nodes):
         if current_nodes > max_nodes:
             probs = [0.1, 0.1, 0.8]  # Rotate, Minkowski, Prune
         else:
-            probs = [0.5, 0.5, 0]  # Rotate, Minkowski, Prune
+            probs = [0.7, 0.3, 0]  # Rotate, Minkowski, Prune
             
         choice = random.choices(['rotate_merge', 'minkowski', 'prune'], weights=probs, k=1)[0]
         
@@ -148,6 +151,17 @@ def parallel_mutate(parent, other_parents, mutation_rate, max_nodes):
         if len(builder.points) == 0:
             builder.add_moser_spindle()
     
+    G = child.builder.get_graph()
+    coloring = nx.greedy_color(G, strategy='largest_first')
+    est_chromatic = max(coloring.values()) + 1
+    # print(f"   --> Validation: Greedy Coloring uses {est_chromatic} colors.")
+    if est_chromatic > 4:
+        # print(f"   --> Checking 4-colorability with SAT-solver...")
+        if not is_colorable(G, 4):
+            print(f"   --> SAT-solver result: G is not 4-colorable!")
+            child.fitness = 100000
+            return child
+    
     # 限制大小（硬约束）
     if len(child.builder.points) > max_nodes:
         # 强制修剪
@@ -155,7 +169,7 @@ def parallel_mutate(parent, other_parents, mutation_rate, max_nodes):
     
     # 更新适应度
     child.update_fitness()
-    
+                
     return child
 
 # --- 旋转库生成器 --- 
@@ -249,7 +263,7 @@ class IntegerRandomSearch:
         if current_nodes > max_nodes:
             probs = [0.1, 0.1, 0.8] # Rotate, Minkowski, Prune
         else:
-            probs = [0.5, 0.5, 0] # Rotate, Minkowski, Prune
+            probs = [0.7, 0.3, 0] # Rotate, Minkowski, Prune
             
         choice = random.choices(['rotate_merge', 'minkowski', 'prune'], weights=probs, k=1)[0]
         
@@ -292,7 +306,7 @@ class IntegerRandomSearch:
                     new_points.append(sum_point)
             
             # 添加到第一个builder
-            builder.add_algebraic_points(new_points)
+            builder.points = new_points
             builder.compute_edges()
             
         elif choice == 'prune':
@@ -338,6 +352,8 @@ class IntegerRandomSearch:
         for i in range(self.elite_size):
             # 直接保留，深拷贝以防意外修改
             next_gen.append(self.population[i].copy())
+        for x in next_gen:
+            print(x.fitness)
             
         # 3. 繁殖与变异 (并行处理)
         # 创建任务列表
@@ -346,15 +362,15 @@ class IntegerRandomSearch:
             for _ in range(5):
                 tasks.append((parent, self.population, self.mutation_rate, self.max_nodes))
         
-        # 使用multiprocessing并行执行变异
-        print(f"Mutating: {len(tasks)} tasks...")
         # 使用multiprocessing并行执行变异并统计耗时
         print(f"Mutating: {len(tasks)} tasks...")
         t0 = time.time()
-        with multiprocessing.Pool() as pool:
+        with multiprocessing.Pool(32) as pool:
             children = pool.starmap(parallel_mutate, tasks)
         elapsed = time.time() - t0
         print(f"Parallel mutation finished in {elapsed:.2f} seconds.")
+        
+        children.sort(key=lambda x: x.fitness, reverse=True)
         
         # 4. 处理结果
         for child in children:
@@ -363,10 +379,13 @@ class IntegerRandomSearch:
                 next_gen.sort(key=lambda x: x.fitness, reverse=True)
                 self.population = next_gen[:self.pop_size]
                 return
-            
-            next_gen.append(child)
+
+            if len([x for x in next_gen if len(x.builder.points) == len(child.builder.points) and len(x.builder.edges) == len(child.builder.edges)]) == 0:
+                next_gen.append(child)
         
         next_gen.sort(key=lambda x: x.fitness, reverse=True)
+        for x in next_gen:
+            print(x.fitness)
         self.population = next_gen[:self.pop_size]
 
     def get_best_graph(self):
@@ -376,10 +395,10 @@ class IntegerRandomSearch:
 if __name__ == "__main__":
     # 1. 配置随机搜索
     rs = IntegerRandomSearch(
-        pop_size=50,
-        max_nodes=2500,  # 限制图规模，防止变慢
+        pop_size=10,
+        max_nodes=2000,  # 限制图规模，防止变慢
         mutation_rate=0.9, # 高变异率，因为探索空间很大
-        elite_size=5
+        elite_size=2
     )
     
     # 2. 初始化

@@ -519,7 +519,7 @@ class AlgebraicUDGBuilder:
 
     # -------- 旋转相关 ------------
 
-    def rotate(self, rot: AlgebraicComplex, pivot: Tuple[float, float] = (0.0, 0.0)):
+    def rotate(self, rot: AlgebraicComplex, pivot: Optional[Union[Tuple[float, float], AlgebraicComplex]] = None):
         """
         与原 UDGBuilder.rotate 类似，但旋转参数不再是浮点角度，而是一个 unit-norm 的
         AlgebraicComplex 元 rot (|rot|=1)，代表复平面中的旋转。
@@ -527,7 +527,15 @@ class AlgebraicUDGBuilder:
         """
         if not self.points:
             return
-        pv = self._embed_float_point(*pivot)
+        if pivot is None:
+            # 默认使用原点
+            pv = AlgebraicComplex.from_rationals(self.field, Fraction(0), Fraction(0))
+        elif isinstance(pivot, AlgebraicComplex):
+            # 直接使用代数域坐标点
+            pv = pivot
+        else:
+            # 浮点坐标需要嵌入到代数域
+            pv = self._embed_float_point(*pivot)
         new_points = []
         for z in self.points:
             # z' = rot * (z - pivot) + pivot
@@ -587,12 +595,12 @@ class AlgebraicUDGBuilder:
         s3 = self.field.get_root(3)
         self.add_algebraic_points([
             AlgebraicComplex.from_rationals(self.field, Fraction(0), Fraction(0)),
-            AlgebraicComplex(self.field, real=halve(self.field.one), imag=halve(s3)),
-            AlgebraicComplex(self.field, real=mhalve(self.field.one), imag=halve(s3)),
-            AlgebraicComplex(self.field, real=self.field.zero, imag=s3),
+            AlgebraicComplex(self.field, real=halve(self.field.one()), imag=halve(s3)),
+            AlgebraicComplex(self.field, real=mhalve(self.field.one()), imag=halve(s3)),
+            AlgebraicComplex(self.field, real=self.field.zero(), imag=s3),
         ])
         rot = AlgebraicComplex(self.field, 
-                               real=self.field.scalar_mul(Fraction(5, 6), self.field.one),
+                               real=self.field.scalar_mul(Fraction(5, 6), self.field.one()),
                                imag=self.field.scalar_mul(Fraction(1, 6), self.field.get_root(11)))
         self.rotate_and_copy(rot, pivot=None)
         
