@@ -416,12 +416,14 @@ class AlgebraicUDGBuilder:
         coords = np.array([p.to_float_pair() for p in self.points])
         tree = KDTree(coords)
         # 先找距离 <= 1 + tol 的对
-        candidate_pairs = tree.query_pairs(r=1.5)
+        candidate_pairs = tree.query_pairs(r=1+self.tolerance)
         edges = set()
         for i, j in candidate_pairs:
             # 用代数精确判定
-            if self._distance_is_one(i, j):
-                edges.add(tuple(sorted((i, j))))
+            dist = np.linalg.norm(coords[i] - coords[j])
+            if dist >= 1.0 - self.tolerance:
+                if self._distance_is_one(i, j):
+                    edges.add(tuple(sorted((i, j))))
         self.edges = edges
 
     def get_graph(self) -> nx.Graph:

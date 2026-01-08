@@ -4,6 +4,7 @@ import networkx as nx
 import random
 import copy
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 from typing import List, Optional, Tuple
 from fractions import Fraction
 
@@ -209,19 +210,20 @@ class IntegerRandomSearch:
         if len(builder.points) == 0:
             builder.add_moser_spindle()
 
-        print(f"{len(builder.points)} nodes, {len(builder.edges)} edges")
+        # print(f"{len(builder.points)} nodes, {len(builder.edges)} edges")
         # 验证图的4染色性
         G = builder.get_graph()
         coloring = nx.greedy_color(G, strategy='largest_first')
         est_chromatic = max(coloring.values()) + 1
-        print(f"   --> Validation: Greedy Coloring uses {est_chromatic} colors.")
+        # print(f"   --> Validation: Greedy Coloring uses {est_chromatic} colors.")
         if est_chromatic > 4:
-            print(f"   --> Checking 4-colorability with SAT-solver...")
+            # print(f"   --> Checking 4-colorability with SAT-solver...")
             if not is_colorable(G, 4):
                 print(f"   --> SAT-solver result: G is not 4-colorable!")
                 individual.fitness = 100000
             else:
-                print(f"   --> SAT-solver result: G is 4-colorable.")
+                # print(f"   --> SAT-solver result: G is 4-colorable.")
+                pass
     
     def step(self):
         """
@@ -244,7 +246,7 @@ class IntegerRandomSearch:
             next_gen.append(self.population[i].copy())
             
         # 3. 繁殖与变异
-        for parent in self.population:
+        for parent in tqdm(self.population, desc='Mutating:'):
             # 随机选择一个父代
             #parent = random.choice(self.population)
             # 复制产生子代

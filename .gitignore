@@ -28,6 +28,7 @@ temp/
 *.temp
 *.png
 *.graphml
+*.txt
 # IDE
 .vscode/
 .idea/
