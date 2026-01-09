@@ -129,7 +129,7 @@ class GeneticUDGSearch:
         
         # GNN模型相关
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.model = load_model(model_path, self.device)
+        # self.model = load_model(model_path, self.device)
         print(f"使用设备: {self.device}")
 
     def initialize_population(self, base_builder_cls):
@@ -149,7 +149,7 @@ class GeneticUDGSearch:
             initial_rotation = random.choice(RATIONAL_ANGLES)
             builder.add_moser_spindle(angle=initial_rotation)
             
-            wrapper = UDGBuilderWrapper(builder, self.model, self.device)
+            wrapper = UDGBuilderWrapper(builder, None, self.device)
             wrapper.update_fitness()
             self.population.append(wrapper)
 
