@@ -26,6 +26,11 @@ class UDGBuilderWrapper:
         self.model = model
         self.device = device
 
+    def copy(self):
+        """深拷贝当前个体，用于产生后代"""
+        new_builder = copy.deepcopy(self.builder)
+        return UDGBuilderWrapper(new_builder, self.model, self.device)
+
     def update_fitness(self):
         """
         计算适应度：结合GNN预测的4染色可能性和图的大小。
@@ -58,13 +63,6 @@ class UDGBuilderWrapper:
             self.fitness = 2.0 * num_edges / num_nodes
         
         return self.fitness
-
-    def copy(self):
-        """深拷贝当前个体，用于产生后代"""
-        new_builder = copy.deepcopy(self.builder)
-        new_wrapper = UDGBuilderWrapper(new_builder, self.model, self.device)
-        new_wrapper.update_fitness()
-        return new_wrapper
 
 # --- 有理角度库生成器 ---
 def get_rational_angles():
@@ -129,7 +127,7 @@ class GeneticUDGSearch:
         
         # GNN模型相关
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        # self.model = load_model(model_path, self.device)
+        self.model = load_model(model_path, self.device)
         print(f"使用设备: {self.device}")
 
     def initialize_population(self, base_builder_cls):
@@ -149,7 +147,7 @@ class GeneticUDGSearch:
             initial_rotation = random.choice(RATIONAL_ANGLES)
             builder.add_moser_spindle(angle=initial_rotation)
             
-            wrapper = UDGBuilderWrapper(builder, None, self.device)
+            wrapper = UDGBuilderWrapper(builder, self.model, self.device)
             wrapper.update_fitness()
             self.population.append(wrapper)
 
@@ -327,8 +325,8 @@ if __name__ == "__main__":
 
     # 1. 配置 GA
     ga = GeneticUDGSearch(
-        pop_size=20,
-        max_nodes=5000,  # 限制图规模，防止变慢
+        pop_size=50,
+        max_nodes=1500,  # 限制图规模，防止变慢
         mutation_rate=0.9, # 高变异率，因为探索空间很大
         elite_size=2
     )
