@@ -135,12 +135,9 @@ if __name__ == "__main__":
     def main():
         try:
             # 配置参数 - 测试用小数据集
-            # num_graphs = 10000  # 减少图数量以便快速测试
-            num_graphs = 200
-            # min_nodes = 50   # 减少最小节点数
-            min_nodes = 100   # 减少最小节点数
-            # max_nodes = 500   # 减少最大节点数
-            max_nodes = 150   # 减少最大节点数
+            num_graphs = 10000  # 减少图数量以便快速测试
+            min_nodes = 50   # 减少最小节点数
+            max_nodes = 500   # 减少最大节点数
             edge_frac_min = 4.1-0.2
             edge_frac_max = 4.1+0.6
             chr = 4
@@ -166,7 +163,7 @@ if __name__ == "__main__":
             print(f"总图数：{len(dataset)}")
             print(f"可{chr}染色图数：{colorable_count} ({colorable_count/len(dataset)*100:.2f}%)")
             print(f"不可{chr}染色图数：{non_colorable_count} ({non_colorable_count/len(dataset)*100:.2f}%)")
-
+            
             # 最终保存数据集
             save_dataset(dataset, dataset_file)
         except Exception as e:

@@ -7,7 +7,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, f1_score, confusion_matrix
 
 # 导入模型定义
-from gnn_model import GCN, load_model, demo, graph_to_data, graph_conflict_rate, loss_fn
+from gnn_model import GCN, load_model, demo, graph_to_data
 
 
 def load_and_preprocess_data(filename):
@@ -52,7 +52,7 @@ def train(model, loader, optimizer, criterion, device):
         data = data.to(device)
         optimizer.zero_grad()
         out = model(data)
-        loss = criterion(out, data.edge_index)
+        loss = criterion(out, data.y)
         loss.backward()
         optimizer.step()
         total_loss += loss.item()
@@ -73,47 +73,48 @@ def evaluate(model, loader, criterion, device):
         for data in loader:
             data = data.to(device)
             out = model(data)
-            loss = criterion(out, data.edge_index)
+            loss = criterion(out, data.y)
             total_loss += loss.item()
             
             # 获取预测结果
-            # preds = out.argmax(dim=1).cpu().numpy()
-            # labels = data.y.cpu().numpy()
-            # all_preds.extend(preds)
-            # all_labels.extend(labels)
+            preds = out.argmax(dim=1).cpu().numpy()
+            labels = data.y.cpu().numpy()
+            all_preds.extend(preds)
+            all_labels.extend(labels)
     
     # 计算准确率和F1分数
-    # accuracy = accuracy_score(all_labels, all_preds)
-    # f1 = f1_score(all_labels, all_preds, average='weighted')
+    accuracy = accuracy_score(all_labels, all_preds)
+    f1 = f1_score(all_labels, all_preds, average='weighted')
     
-    return total_loss / len(loader) #, accuracy, f1
+    return total_loss / len(loader), accuracy, f1
+
 
 def test_model(model, loader, device):
     """
     测试模型
     """
     model.eval()
-    vals = []
-    preds = []
+    all_preds = []
     all_labels = []
     
     with torch.no_grad():
         for data in loader:
             data = data.to(device)
             out = model(data)
-            rate = graph_conflict_rate(out, data.edge_index)
-            vals.append(rate)
             
             # 获取预测结果
-            labels = data.colorable.cpu().numpy()
+            preds = out.argmax(dim=1).cpu().numpy()
+            labels = data.y.cpu().numpy()
+            all_preds.extend(preds)
             all_labels.extend(labels)
     
     # 计算指标
-    # accuracy = accuracy_score(all_labels, all_preds)
-    # f1 = f1_score(all_labels, all_preds, average='weighted')
-    # conf_matrix = confusion_matrix(all_labels, all_preds)
+    accuracy = accuracy_score(all_labels, all_preds)
+    f1 = f1_score(all_labels, all_preds, average='weighted')
+    conf_matrix = confusion_matrix(all_labels, all_preds)
     
-    return sum(vals) / len(vals), all_labels
+    return accuracy, f1, conf_matrix, all_preds, all_labels
+
 
 def main():
     # 设置设备
@@ -124,40 +125,42 @@ def main():
     train_loader, val_loader, test_loader = load_and_preprocess_data("test_graph_dataset.pkl")
     
     # 初始化模型
-    # model = GCN(hidden_channels=256).to(device)
-    model = GCN().to(device)
+    model = GCN(hidden_channels=256).to(device)
     print(model)
     
     # 设置优化器和损失函数
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    criterion = torch.nn.CrossEntropyLoss()
     
     # 训练模型
-    # num_epochs = 1000
-    num_epochs = 100
-    best_val_loss = 0.0
+    num_epochs = 1000
+    best_val_accuracy = 0.0
     best_model_path = "best_4color_model.pth"
     
     print("开始训练...")
     for epoch in range(num_epochs):
-        train_loss = train(model, train_loader, optimizer, loss_fn, device)
-        val_loss = evaluate(model, val_loader, loss_fn, device)
+        train_loss = train(model, train_loader, optimizer, criterion, device)
+        val_loss, val_accuracy, val_f1 = evaluate(model, val_loader, criterion, device)
         
         # 保存最佳模型
-        if epoch == 0 or val_loss < best_val_loss:
-            best_val_loss = val_loss
+        if val_accuracy > best_val_accuracy:
+            best_val_accuracy = val_accuracy
             torch.save(model.state_dict(), best_model_path)
-            print(f"第 {epoch+1} 轮: 验证损失降低至 {val_loss:.8f}，保存模型到 {best_model_path}")
+            print(f"第 {epoch+1} 轮: 验证准确率提升至 {best_val_accuracy:.4f}，保存模型到 {best_model_path}")
         
         if (epoch+1) % 10 == 0:
-            print(f"第 {epoch+1}/{num_epochs} 轮: 训练损失={train_loss:.8f}, 验证损失={val_loss:.8f}")
+            print(f"第 {epoch+1}/{num_epochs} 轮: 训练损失={train_loss:.4f}, 验证损失={val_loss:.4f}, 验证准确率={val_accuracy:.4f}, 验证F1={val_f1:.4f}")
     
     # 加载最佳模型并测试
     print("\n开始测试...")
     best_model = load_model(best_model_path, device)
-    test_accuracy, all_labels = test_model(best_model, test_loader, device)
+    test_accuracy, test_f1, conf_matrix, all_preds, all_labels = test_model(best_model, test_loader, device)
     
     # 打印测试结果
-    print(f"测试准确率: {test_accuracy:.8f}")
+    print(f"测试准确率: {test_accuracy:.4f}")
+    print(f"测试F1分数: {test_f1:.4f}")
+    print("混淆矩阵:")
+    print(conf_matrix)
     
     # 统计测试集中可染色和不可染色的数量
     colorable_test = sum(all_labels)
