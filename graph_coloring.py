@@ -2,6 +2,7 @@ import networkx as nx
 import subprocess
 import random
 import string
+import os
 
 def graph_to_cnf_sat(G, k):
     """
@@ -126,6 +127,11 @@ def verify_coloring(G, k, assignment, var_mapping):
 def graph_coloring(G, k):
     clauses, var_mapping = graph_to_cnf_sat(G, k)
     random_str = ''.join(random.choices(string.ascii_letters + string.digits, k=32))
+
+    # 确保tmp文件夹存在
+    if not os.path.exists('./tmp'):
+        os.makedirs('./tmp')
+
     cnf_filename = f"./tmp/graph_coloring{random_str}.cnf"
     save_cnf_to_file(clauses, cnf_filename)
     
