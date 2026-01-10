@@ -373,7 +373,7 @@ class UDGBuilder:
         
     def remove_farthest_points(self, ratio: float):
         """
-        移除与原点(0,0)直线距离最大的一定比例的点。
+        移除度数最小的一定比例的点。
         
         Args:
             ratio: 移除点的比例，范围 [0, 1]。0 表示不移除任何点，1 表示移除所有点。
@@ -392,19 +392,24 @@ class UDGBuilder:
             print(f"Removed all {len(self.nodes)} nodes.")
             return
         
-        # 计算每个点到原点的距离
-        distances = np.linalg.norm(self.nodes, axis=1)
+        # 获取图的度数信息
+        G = self.get_graph()
+        degrees = dict(G.degree())
         
-        # 获取点的索引和距离，并按距离从大到小排序
-        sorted_indices = np.argsort(-distances)
+        if not degrees:
+            return
+            
+        # 按度数从小到大排序节点
+        sorted_nodes = sorted(degrees.items(), key=lambda x: x[1])
         
         # 确定需要移除的点的数量
         num_to_remove = int(len(self.nodes) * ratio)
         num_to_remove = max(1, num_to_remove)  # 至少移除1个点
         num_to_remove = min(len(self.nodes) - 1, num_to_remove)  # 至少保留1个点
         
-        # 确定要移除的节点索引
-        indices_to_remove = sorted(sorted_indices[:num_to_remove])
+        # 获取要移除的节点索引
+        nodes_to_remove = [node for node, degree in sorted_nodes[:num_to_remove]]
+        indices_to_remove = sorted(nodes_to_remove)
         
         # 创建保留节点的掩码
         keep_mask = np.ones(len(self.nodes), dtype=bool)
@@ -426,7 +431,7 @@ class UDGBuilder:
         self.nodes = new_nodes
         self.edges = new_edges
         
-        print(f"Removed {len(indices_to_remove)} farthest points. Remaining nodes: {len(self.nodes)}, edges: {len(self.edges)}.")
+        print(f"Removed {len(indices_to_remove)} lowest degree points. Remaining nodes: {len(self.nodes)}, edges: {len(self.edges)}.")
 
     def k_core_pruning(self, k: int):
         """

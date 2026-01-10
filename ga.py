@@ -69,7 +69,7 @@ class UDGBuilderWrapper:
 # --- 有理角度库生成器 ---
 def get_rational_angles():
     angles = []
-    for a in range(2, 13):
+    for a in range(2, 4):
         for b in range(1, a):
             angles.append(np.arccos(b/a))
             angles.append(np.arccos(-b/a))
@@ -174,10 +174,7 @@ class GeneticUDGSearch:
             # --- 变异 1: Rotate & Merge ---
             # 将第二个 UDGBuilder 旋转随机角度与第一个合并
             # 从有理角度库中随机选一个，或者微小概率选随机角度
-            if random.random() < 0.9:
-                angle = random.choice(RATIONAL_ANGLES)
-            else:
-                angle = random.uniform(0.01, 1.0) # 小幅随机扰动
+            angle = random.choice(RATIONAL_ANGLES)
                 
             # 随机选择旋转中心 (原点或随机现有点)
             if len(builder2.nodes) > 0 and random.random() < 0.3:
@@ -209,7 +206,8 @@ class GeneticUDGSearch:
                 builder1.compute_edges()
                 
         elif choice == 'prune':
-            # --- 变异 3: Pruning (K-Core Style) ---
+            # --- 变异 3: Pruning (Low Degree Removal) ---
+            # 移除度数最小的点，这是更有效的图稀疏化策略
             # 仅对第一个 UDGBuilder 进行操作
             G = individual1.graph_cache
             if G is None: 
@@ -274,35 +272,42 @@ class GeneticUDGSearch:
             
         # 3. 繁殖与变异
         # 简单的轮盘赌或锦标赛选择，这里用简单的 Top-K 随机选择
-        parents_pool = self.population[:self.pop_size // 2] # 选前 50% 做父母
+        # parents_pool = self.population[:self.pop_size // 2] # 选前 50% 做父母
         
-        while len(next_gen) < self.pop_size:
+        for parent in self.population:
             # 选择父代
-            parent = random.choice(parents_pool)
+            # parent = random.choice(parents_pool)
             # 复制产生子代
-            child = parent.copy()
-            
-            # 变异
-            if random.random() < self.mutation_rate:
-                # 从 parent 列表中随机选择第二个 UDGBuilder
-                second_parent = random.choice(parents_pool)
-                self._mutate(child, second_parent)
-            
-            # 限制大小 (硬约束)
-            if len(child.builder.nodes) > self.max_nodes:
-                # 强制修剪
-                # 这里的逻辑简化处理：如果太大，就重置回较小的状态或强力修剪
-                # 这里演示简单的强力 Pruning
-                child.builder.k_core_pruning(3)
+            for k in range(5):
+                child = parent.copy()
+                
+                # 变异
+                if random.random() < self.mutation_rate:
+                    # 从 parent 列表中随机选择第二个 UDGBuilder
+                    # second_parent = random.choice(parents_pool)
+                    self._mutate(child, child)
+    
+                if child.fitness > 10000:
+                    next_gen.append(child)
+                    next_gen.sort(key=lambda x: x.fitness, reverse=True)
+                    self.population = next_gen[:self.pop_size]
+                    return
+                # 限制大小 (硬约束)
                 if len(child.builder.nodes) > self.max_nodes:
-                    child.builder.remove_farthest_points(0.5)
-                # 如果还大，可能需要更激进的随机采样保留
+                    # 强制修剪
+                    # 这里的逻辑简化处理：如果太大，就重置回较小的状态或强力修剪
+                    # 这里演示简单的强力 Pruning
+                    child.builder.k_core_pruning(3)
+                    if len(child.builder.nodes) > self.max_nodes:
+                        child.builder.remove_farthest_points(0.5)
+                    # 如果还大，可能需要更激进的随机采样保留
             
             # 计算子代适应度
             child.update_fitness()
             next_gen.append(child)
-            
-        self.population = next_gen
+
+        next_gen.sort(key=lambda x: x.fitness, reverse=True)
+        self.population = next_gen[:self.pop_size]
         # if self.generation % 8 == 0:
         #     for udg in self.population:
         #         udg.builder.k_core_pruning(3)
