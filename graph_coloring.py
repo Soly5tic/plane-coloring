@@ -134,8 +134,7 @@ def graph_coloring(G, k):
         result = subprocess.run(
             ['./kissat', '--quiet', cnf_filename], 
             capture_output=True, 
-            text=True,
-            timeout=300  # 设置30秒超时
+            text=True
         )
         output = result.stdout
         lines = output.split('\n')
